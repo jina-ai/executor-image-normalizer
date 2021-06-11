@@ -1,0 +1,3 @@
+jina==2.0.0rc6
+Pillow
+numpy
