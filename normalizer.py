@@ -31,9 +31,7 @@ class ImageNormalizer(Executor):
 
     def craft(self, docs: DocumentArray, fn) -> DocumentArray:
         filtered_docs = DocumentArray(
-            list(
-                filter(lambda d: 'image/' in d.mime_type, docs)
-            )
+            list(filter(lambda d: 'image/' in d.mime_type, docs))
         )
         for doc in filtered_docs:
             getattr(doc, fn)()

@@ -1,4 +1,3 @@
-from setuptools import find_packages
 import setuptools
 
 
@@ -13,7 +12,8 @@ setuptools.setup(
         "Programming Language :: Python :: 3",
         "Operating System :: OS Independent",
     ],
-    packages=find_packages(where='.', include=['jinahub.*']),
-    install_requires=open("jinahub/image_normalizer/requirements.txt").readlines(),
-    python_requires=">=3.7"
+    py_modules=['jinahub.image.normalizer'],
+    package_dir={'jinahub.image': '.'},
+    install_requires=open("requirements.txt").readlines(),
+    python_requires=">=3.7",
 )
