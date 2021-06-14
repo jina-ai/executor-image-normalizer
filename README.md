@@ -1,6 +1,13 @@
+<p align="center">
+<img src="https://github.com/jina-ai/jina/blob/master/.github/logo-only.gif?raw=true" alt="Jina banner" width="200px">
+</p>
+
 # Image Normalizer
 
+### Description
 The image normalizer resizes, crops and normalizes images.
+
+### Parameters
 The following parameters can be used:
 
 - `resize_dim` (int): The size of the image after resizing
