@@ -2,7 +2,7 @@ manifest_version: 1
 name: ImageNormalizer
 kind: crafter
 type: pod
-description: '`ImageNormalizer` reads an image and resizes and normalizes it'
+description: '`ImageNormalizer` resizes and normalizes images'
 author: Jina AI Dev-Team (dev-team@jina.ai)
 url: https://jina.ai
 vendor: Jina AI Limited
