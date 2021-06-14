@@ -2,12 +2,12 @@ import setuptools
 
 
 setuptools.setup(
-    name="crafter-image-normalizer",
+    name="executor-image-normalizer",
     version="2.0",
     author='Jina Dev Team',
     author_email='dev-team@jina.ai',
     description="Executor that reads and normalizes images",
-    url="https://github.com/jina-ai/crafter-image-normalizer",
+    url="https://github.com/jina-ai/executor-image-normalizer",
     classifiers=[
         "Programming Language :: Python :: 3",
         "Operating System :: OS Independent",
