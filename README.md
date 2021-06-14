@@ -1,6 +1,6 @@
 # Image Normalizer
 
-The image normalizer reads, resizes, crops and normalizes images.
+The image normalizer resizes, crops and normalizes images.
 The following parameters can be used:
 
 - `resize_dim` (int): The size of the image after resizing
