@@ -1,18 +1,13 @@
 import pytest
 import os
 import numpy as np
-import pathlib
 from PIL.Image import Image
 
 from jina import DocumentArray, Document
 
 from jinahub.image.normalizer import ImageNormalizer
 
-directory = os.path.dirname(os.path.realpath(__file__))
-
-@pytest.fixture
-def root_dir() -> str:
-    return str(pathlib.Path(__file__).parent.parent)
+cur_dir = os.path.dirname(os.path.abspath(__file__))
 
 
 def test_initialization():
@@ -34,8 +29,8 @@ def test_initialization():
     assert norm.target_channel_axis == 5
 
 
-def test_crafting_image(root_dir):
-    doc = Document(uri=os.path.join(root_dir, 'data', 'test_image.png'))
+def test_crafting_image():
+    doc = Document(uri=os.path.join(cur_dir, '..', 'data', 'test_image.png'))
     doc.convert_image_uri_to_blob()
     norm = ImageNormalizer(resize_dim=123,
                            img_mean=(0.1, 0.1, 0.1),
@@ -85,10 +80,10 @@ def test_crafting_image(root_dir):
     assert np.array_equal(processed_docs[0].blob, img)
 
 
-def test_move_channel_axis(root_dir):
+def test_move_channel_axis():
     norm = ImageNormalizer(channel_axis=2, target_channel_axis=0)
 
-    doc = Document(uri=os.path.join(root_dir, 'data', 'test_image.png'))
+    doc = Document(uri=os.path.join(cur_dir, '..', 'data', 'test_image.png'))
     doc.convert_image_uri_to_blob()
     img = norm._load_image(doc.blob)
     assert img.size == (96, 96)
