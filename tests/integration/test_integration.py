@@ -13,7 +13,7 @@ def root_dir() -> str:
 
 def data_generator(num_docs, root_dir):
     for i in range(num_docs):
-        doc = Document(uri=os.path.join(root_dir, 'test_image.png'))
+        doc = Document(uri=os.path.join(root_dir, 'data', 'test_image.png'))
         doc.convert_image_uri_to_blob()
         yield doc
 
