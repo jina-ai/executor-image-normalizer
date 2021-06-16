@@ -10,4 +10,4 @@ RUN pip install -r tests/requirements.txt
 RUN pytest tests
 
 FROM base
-ENTRYPOINT ["jina", "pod", "--uses", "config.yml"]
+ENTRYPOINT ["jina", "executor", "--uses", "config.yml"]
