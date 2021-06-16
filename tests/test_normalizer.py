@@ -34,8 +34,7 @@ def test_crafting_image():
     doc.convert_image_uri_to_blob()
     norm = ImageNormalizer(resize_dim=123,
                            img_mean=(0.1, 0.1, 0.1),
-                           img_std=(0.5, 0.5, 0.5),
-                           )
+                           img_std=(0.5, 0.5, 0.5))
     img = norm._load_image(doc.blob)
     assert isinstance(img, Image)
     assert img.size == (96, 96)

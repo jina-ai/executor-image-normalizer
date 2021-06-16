@@ -1,6 +1,3 @@
 jtype: ImageNormalizer
 with:
   {}
-metas:
-  py_modules:
-    - jinahub.image.normalizer
