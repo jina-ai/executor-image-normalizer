@@ -14,6 +14,7 @@ python -m venv .venv
 source .venv/bin/activate
 pip install wheel
 pip install -r tests/requirements.txt
+pip install .
 pytest -s -v tests/
 local_exit_code=$?
 deactivate

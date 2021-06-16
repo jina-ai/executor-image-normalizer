@@ -1,9 +1,9 @@
 FROM jinaai/jina:master
 
-ADD *.py *.yml requirements.txt ./
+COPY . ./image_normalizer/
+WORKDIR ./image_normalizer
 
-RUN pip install -r tests/requirements.txt
-
+RUN pip install -r tests/requirements.txt && pip install .
 RUN pytest tests
 
 ENTRYPOINT ["jina", "pod", "--uses", "config.yml"]
