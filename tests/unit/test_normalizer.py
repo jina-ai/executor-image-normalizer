@@ -7,7 +7,7 @@ from jina import DocumentArray, Document
 
 from jinahub.image.normalizer import ImageNormalizer
 
-directory = os.path.dirname(os.path.realpath(__file__))
+cur_dir = os.path.dirname(os.path.abspath(__file__))
 
 
 def test_initialization():
@@ -30,12 +30,11 @@ def test_initialization():
 
 
 def test_crafting_image():
-    doc = Document(uri=os.path.join(directory, 'test_image.png'))
+    doc = Document(uri=os.path.join(cur_dir, '..', 'data', 'test_image.png'))
     doc.convert_image_uri_to_blob()
     norm = ImageNormalizer(resize_dim=123,
                            img_mean=(0.1, 0.1, 0.1),
-                           img_std=(0.5, 0.5, 0.5),
-                           )
+                           img_std=(0.5, 0.5, 0.5))
     img = norm._load_image(doc.blob)
     assert isinstance(img, Image)
     assert img.size == (96, 96)
@@ -84,7 +83,7 @@ def test_crafting_image():
 def test_move_channel_axis():
     norm = ImageNormalizer(channel_axis=2, target_channel_axis=0)
 
-    doc = Document(uri=os.path.join(directory, 'test_image.png'))
+    doc = Document(uri=os.path.join(cur_dir, '..', 'data', 'test_image.png'))
     doc.convert_image_uri_to_blob()
     img = norm._load_image(doc.blob)
     assert img.size == (96, 96)

@@ -3,4 +3,4 @@ with:
   {}
 metas:
   py_modules:
-    - jinahub.image.normalizer
+    - normalizer.py
