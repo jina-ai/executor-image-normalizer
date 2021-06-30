@@ -1,2 +1,2 @@
-jina==2.0.0rc8
+jina[hub]==2.0.0
 Pillow==8.2.0
