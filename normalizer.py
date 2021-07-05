@@ -19,6 +19,7 @@ class ImageNormalizer(Executor):
         channel_axis: int = -1,
         target_channel_axis: int = -1,
         image_smoothing: str = None,
+        local_response_norm: bool = False,
         *args,
         **kwargs,
     ):
@@ -43,6 +44,8 @@ class ImageNormalizer(Executor):
                 "bilateral",
             ], self.error_msg
 
+        self.local_response_norm = local_response_norm
+
     @requests
     def craft(self, docs: DocumentArray, **kwargs) -> DocumentArray:
         filtered_docs = DocumentArray(
@@ -65,6 +68,15 @@ class ImageNormalizer(Executor):
             if self.image_smoothing
             else img
         )
+        if self.local_response_norm:
+            img_tensor = transforms.ToTensor()(img).unsqueeze_(0)
+            img_tensor = (
+                self._local_response_norm(img_tensor)
+                if self.local_response_norm
+                else img
+            )
+            img = transforms.ToPILImage()(img_tensor.squeeze_(0))
+
         img = np.array(img).astype('float32') / 255
         img -= self.img_mean
         img /= self.img_std
@@ -100,6 +112,21 @@ class ImageNormalizer(Executor):
 
         image_smooth = cv2.subtract(img, image_smooth, dtype=cv2.CV_32F)
         return image_smooth
+
+    def _local_response_norm(self, input, alpha=1e-4, beta=0.75, k=1):
+        """
+        Apply local response normalization over an input signal composed of
+        several input planes, where channels occupy the second dimension.
+        Applies normalization across channels.
+
+        """
+        input = transforms.ToTensor()(input).unsqueeze_(0)
+        input = torch.nn.functional.local_response_norm(
+            input, 3, alpha=alpha, beta=beta, k=k
+        )
+        input = transforms.ToPILImage()(input.squeeze_(0))
+
+        return input
 
     def _load_image(self, blob: 'np.ndarray'):
         """
