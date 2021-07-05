@@ -1,10 +1,11 @@
 __copyright__ = "Copyright (c) 2021 Jina AI Limited. All rights reserved."
 __license__ = "Apache-2.0"
 
-from typing import Tuple, Union, Iterable
+from typing import Iterable, Tuple, Union
+
+import cv2
 import numpy as np
 import PIL.Image as Image
-
 from jina import DocumentArray, Executor, requests
 
 
@@ -17,6 +18,7 @@ class ImageNormalizer(Executor):
         resize_dim: Union[Iterable[int], int] = 256,
         channel_axis: int = -1,
         target_channel_axis: int = -1,
+        image_smoothing: str = None,
         *args,
         **kwargs,
     ):
@@ -28,6 +30,18 @@ class ImageNormalizer(Executor):
         self.img_std = np.array(img_std).reshape((1, 1, 3))
         self.channel_axis = channel_axis
         self.target_channel_axis = target_channel_axis
+        self.image_smoothing = image_smoothing
+        if self.image_smoothing:
+            self.error_msg = (
+                f"Image smoothing is either 'gaussian', 'averaging'"
+                f"'median' or 'bilateral', got {self.image_smoothing}."
+            )
+            assert self.image_smoothing in [
+                "gaussian",
+                "averaging",
+                "median",
+                "bilateral",
+            ], self.error_msg
 
     @requests
     def craft(self, docs: DocumentArray, **kwargs) -> DocumentArray:
@@ -46,10 +60,46 @@ class ImageNormalizer(Executor):
     def _normalize(self, img):
         img = self._resize_short(img)
         img, _, _ = self._crop_image(img, how='center')
+        img = (
+            self._image_smoothing(img, self.image_smoothing)
+            if self.image_smoothing
+            else img
+        )
         img = np.array(img).astype('float32') / 255
         img -= self.img_mean
         img /= self.img_std
         return img
+
+    def _image_smoothing(
+        self,
+        img: Image,
+        image_smoothing: str = None,
+        ksize: Tuple = (65, 65),
+        sigmaXGaussian: int = 10,
+        ksizeMedianBlur: int = 5,
+        diameterBilateralFilter: int = 9,
+        sigmaColorBilateralFilter: int = 75,
+        sigmaSpace_bilateralFilter: int = 75,
+    ):
+        img = np.array(img)
+        if image_smoothing == "gaussian":
+            image_smooth = cv2.GaussianBlur(img, ksize, sigmaXGaussian)
+        elif image_smoothing == "averaging":
+            image_smooth = cv2.blur(img, ksize)
+        elif image_smoothing == "median":
+            image_smooth = cv2.medianBlur(img, ksizeMedianBlur)
+        elif image_smoothing == "bilateral":
+            image_smooth = cv2.bilateralFilter(
+                img,
+                diameterBilateralFilter,
+                sigmaColorBilateralFilter,
+                sigmaSpace_bilateralFilter,
+            )
+        else:
+            assert self.error_msg
+
+        image_smooth = cv2.subtract(img, image_smooth, dtype=cv2.CV_32F)
+        return image_smooth
 
     def _load_image(self, blob: 'np.ndarray'):
         """
@@ -59,8 +109,9 @@ class ImageNormalizer(Executor):
         return Image.fromarray(img.astype('uint8'))
 
     @staticmethod
-    def _move_channel_axis(img: 'np.ndarray', channel_axis_to_move: int,
-                           target_channel_axis: int = -1) -> 'np.ndarray':
+    def _move_channel_axis(
+        img: 'np.ndarray', channel_axis_to_move: int, target_channel_axis: int = -1
+    ) -> 'np.ndarray':
         """
         Ensure the color channel axis is the default axis.
         """
@@ -68,8 +119,7 @@ class ImageNormalizer(Executor):
             return img
         return np.moveaxis(img, channel_axis_to_move, target_channel_axis)
 
-    def _crop_image(self, img, top: int = None, left: int = None,
-                    how: str = 'precise'):
+    def _crop_image(self, img, top: int = None, left: int = None, how: str = 'precise'):
         """
         Crop the input :py:mod:`PIL` image.
         :param img: :py:mod:`PIL.Image`, the image to be resized
@@ -91,8 +141,10 @@ class ImageNormalizer(Executor):
         elif isinstance(self.target_size, Tuple) and len(self.target_size) == 2:
             target_h, target_w = self.target_size
         else:
-            raise ValueError(f'target_size should be an integer or a tuple of '
-                             f'two integers: {self.target_size}')
+            raise ValueError(
+                f'target_size should be an integer or a tuple of '
+                f'two integers: {self.target_size}'
+            )
         w_beg = left
         h_beg = top
         if how == 'center':
@@ -102,9 +154,13 @@ class ImageNormalizer(Executor):
             w_beg = np.random.randint(0, img_w - target_w + 1)
             h_beg = np.random.randint(0, img_h - target_h + 1)
         elif how == 'precise':
-            assert (w_beg is not None and h_beg is not None)
-            assert (0 <= w_beg <= (img_w - target_w)), f'left must be within [0, {img_w - target_w}]: {w_beg}'
-            assert (0 <= h_beg <= (img_h - target_h)), f'top must be within [0, {img_h - target_h}]: {h_beg}'
+            assert w_beg is not None and h_beg is not None
+            assert (
+                0 <= w_beg <= (img_w - target_w)
+            ), f'left must be within [0, {img_w - target_w}]: {w_beg}'
+            assert (
+                0 <= h_beg <= (img_h - target_h)
+            ), f'top must be within [0, {img_h - target_h}]: {h_beg}'
         else:
             raise ValueError(f'unknown input how: {how}')
         if not isinstance(w_beg, int):
@@ -134,7 +190,9 @@ class ImageNormalizer(Executor):
         elif isinstance(self.resize_dim, Tuple) and len(self.resize_dim) == 2:
             target_w, target_h = self.resize_dim
         else:
-            raise ValueError(f'target_size should be an integer or a tuple of two '
-                             f'integers: {self.resize_dim}')
+            raise ValueError(
+                f'target_size should be an integer or a tuple of two '
+                f'integers: {self.resize_dim}'
+            )
         img = img.resize((target_w, target_h), getattr(Image, how))
         return img
