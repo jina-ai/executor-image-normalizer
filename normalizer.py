@@ -20,6 +20,7 @@ class ImageNormalizer(Executor):
         target_channel_axis: int = -1,
         image_smoothing: str = None,
         local_response_norm: bool = False,
+        local_contrast_norm: bool = False,
         *args,
         **kwargs,
     ):
@@ -45,6 +46,7 @@ class ImageNormalizer(Executor):
             ], self.error_msg
 
         self.local_response_norm = local_response_norm
+        self.local_contrast_norm = local_contrast_norm
 
     @requests
     def craft(self, docs: DocumentArray, **kwargs) -> DocumentArray:
@@ -68,12 +70,17 @@ class ImageNormalizer(Executor):
             if self.image_smoothing
             else img
         )
-        if self.local_response_norm:
+        if self.local_contrast_norm or self.local_response_norm:
             img_tensor = transforms.ToTensor()(img).unsqueeze_(0)
+            img_tensor = (
+                self._local_contrast_norm(img_tensor)
+                if self.local_contrast_norm
+                else img_tensor
+            )
             img_tensor = (
                 self._local_response_norm(img_tensor)
                 if self.local_response_norm
-                else img
+                else img_tensor
             )
             img = transforms.ToPILImage()(img_tensor.squeeze_(0))
 
@@ -127,6 +134,57 @@ class ImageNormalizer(Executor):
         input = transforms.ToPILImage()(input.squeeze_(0))
 
         return input
+
+    def _local_contrast_norm(self, image, radius=9):
+        """
+        Apply local contrast normalization over an input image
+        image: torch.Tensor , .shape => (1,channels,height,width)
+
+        radius: Gaussian filter size (int), odd
+        """
+        image = transforms.ToTensor()(image).unsqueeze_(0)
+        if radius % 2 == 0:
+            radius += 1
+
+        def get_gaussian_filter(kernel_shape):
+            x = np.zeros(kernel_shape, dtype='float64')
+
+            def gauss(x, y, sigma=2.0):
+                Z = 2 * np.pi * sigma ** 2
+                return 1.0 / Z * np.exp(-(x ** 2 + y ** 2) / (2.0 * sigma ** 2))
+
+            mid = np.floor(kernel_shape[-1] / 2.0)
+            for kernel_idx in range(0, kernel_shape[1]):
+                for i in range(0, kernel_shape[2]):
+                    for j in range(0, kernel_shape[3]):
+                        x[0, kernel_idx, i, j] = gauss(i - mid, j - mid)
+
+            return x / np.sum(x)
+
+        n, c, h, w = image.shape[0], image.shape[1], image.shape[2], image.shape[3]
+
+        gaussian_filter = torch.Tensor(get_gaussian_filter((1, c, radius, radius)))
+        filtered_out = torch.nn.functional.conv2d(
+            image, gaussian_filter, padding=radius - 1
+        )
+        mid = int(np.floor(gaussian_filter.shape[2] / 2.0))
+        ### Subtractive Normalization
+        centered_image = image - filtered_out[:, :, mid:-mid, mid:-mid]
+
+        ## Variance Calc
+        sum_sqr_image = torch.nn.functional.conv2d(
+            centered_image.pow(2), gaussian_filter, padding=radius - 1
+        )
+        s_deviation = sum_sqr_image[:, :, mid:-mid, mid:-mid].sqrt()
+        per_img_mean = s_deviation.mean()
+
+        ## Divisive Normalization
+        divisor = np.maximum(per_img_mean.numpy(), s_deviation.numpy())
+        divisor = np.maximum(divisor, 1e-4)
+        new_image = centered_image / torch.Tensor(divisor)
+        new_image = transforms.ToPILImage()(new_image.squeeze_(0))
+
+        return new_image
 
     def _load_image(self, blob: 'np.ndarray'):
         """
