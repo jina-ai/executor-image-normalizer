@@ -48,7 +48,7 @@ def test_initialization():
     assert norm.target_channel_axis == 5
 
 
-def test_reading_image(test_image_uri_doc,
+def test_convert_image_to_blob(test_image_uri_doc,
                        test_image_buffer_doc,
                        test_image_blob_doc):
 
@@ -61,14 +61,15 @@ def test_reading_image(test_image_uri_doc,
                           test_image_blob_doc])
 
     assert docs[0].blob is None and docs[1].blob is None
-    norm.read(docs)
+    for doc in docs:
+        norm._convert_image_to_blob(doc)
     assert len(docs) == 3
     for doc in docs:
         assert np.array_equal(doc.blob, test_image_blob_doc.blob)
 
     
-@pytest.mark.parametrize('manual_read', [True, False])
-def test_crafting_image(test_image_uri_doc, manual_read):
+@pytest.mark.parametrize('manual_convert', [True, False])
+def test_crafting_image(test_image_uri_doc, manual_convert):
     doc = Document(test_image_uri_doc, copy=True)
     doc.convert_image_uri_to_blob()
     norm = ImageNormalizer(resize_dim=123,
@@ -115,7 +116,7 @@ def test_crafting_image(test_image_uri_doc, manual_read):
 
     assert np.array_equal(norm_img, img)
 
-    if manual_read:
+    if manual_convert:
         docs = DocumentArray([doc])
     else:
         docs = DocumentArray([test_image_uri_doc])

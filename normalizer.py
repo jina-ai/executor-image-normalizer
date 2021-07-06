@@ -34,8 +34,9 @@ class ImageNormalizer(Executor):
         filtered_docs = DocumentArray(
             list(filter(lambda d: 'image/' in d.mime_type, docs))
         )
-        self.read(filtered_docs)
+
         for doc in filtered_docs:
+            self._convert_image_to_blob(doc)
             raw_img = self._load_image(doc.blob)
             _img = self._normalize(raw_img)
             # move the channel_axis to target_channel_axis to better fit
@@ -44,12 +45,11 @@ class ImageNormalizer(Executor):
             doc.blob = img
         return filtered_docs
 
-    def read(self, docs):
-        for doc in docs:
-            if doc.uri:
-                doc.convert_image_uri_to_blob()
-            elif doc.buffer:
-                doc.convert_image_buffer_to_blob()
+    def _convert_image_to_blob(self, doc):
+        if doc.uri:
+            doc.convert_image_uri_to_blob()
+        elif doc.buffer:
+            doc.convert_image_buffer_to_blob()
 
     def _normalize(self, img):
         img = self._resize_short(img)
