@@ -6,7 +6,11 @@ from typing import Iterable, Tuple, Union
 import cv2
 import numpy as np
 import PIL.Image as Image
+import torch
 from jina import DocumentArray, Executor, requests
+from torchvision import transforms
+
+Tensor = torch.Tensor
 
 
 class ImageNormalizer(Executor):
@@ -63,6 +67,13 @@ class ImageNormalizer(Executor):
         return filtered_docs
 
     def _normalize(self, img):
+        """
+        Apply resize, crop, smooth, local contrast and local response normalization
+
+        Args:
+        - img: image to normalize
+
+        """
         img = self._resize_short(img)
         img, _, _ = self._crop_image(img, how='center')
         img = (
@@ -98,8 +109,27 @@ class ImageNormalizer(Executor):
         ksizeMedianBlur: int = 5,
         diameterBilateralFilter: int = 9,
         sigmaColorBilateralFilter: int = 75,
-        sigmaSpace_bilateralFilter: int = 75,
-    ):
+        sigmaSpaceBilateralFilter: int = 75,
+    ) -> Image:
+        """
+        Apply image smoothing techniques to help reduce the noise by removing high frequency
+        content (eg: noise, edges) from the image.
+        We use OpenCV to provide four main types of smoothing techniques:
+        - Averaging
+        - Gaussian Blurring
+        - Median Blurring
+        - Bilateral Filtering
+
+        Args:
+            img: input image to be smoothed
+            image_smoothing: image soothing technique
+            ksize: Gaussian kernel size, ksize.width and ksize.height
+            sigmaXGaussian: Gaussian kernel standard deviation in X direction.
+            ksizeMedianBlur: Median blurring kernel size
+            diameterBilateralFilter: Diameter of each pixel neighborhood that is used during filtering.
+            sigmaColorBilateralFilter: Filter sigma in the color space.
+            sigmaSpaceBilateralFilter: Filter sigma in the coordinate space.
+        """
         img = np.array(img)
         if image_smoothing == "gaussian":
             image_smooth = cv2.GaussianBlur(img, ksize, sigmaXGaussian)
@@ -120,29 +150,35 @@ class ImageNormalizer(Executor):
         image_smooth = cv2.subtract(img, image_smooth, dtype=cv2.CV_32F)
         return image_smooth
 
-    def _local_response_norm(self, input, alpha=1e-4, beta=0.75, k=1):
+    def _local_response_norm(
+        self,
+        input: Tensor,
+        size: int = 3,
+        alpha: float = 1e-4,
+        beta: float = 0.75,
+        k: float = 1.0,
+    ) -> Tensor:
         """
         Apply local response normalization over an input signal composed of
         several input planes, where channels occupy the second dimension.
-        Applies normalization across channels.
 
+        See :class:`~torch.nn.LocalResponseNorm` for details.
         """
-        input = transforms.ToTensor()(input).unsqueeze_(0)
+
         input = torch.nn.functional.local_response_norm(
-            input, 3, alpha=alpha, beta=beta, k=k
+            input, size, alpha=alpha, beta=beta, k=k
         )
-        input = transforms.ToPILImage()(input.squeeze_(0))
 
         return input
 
-    def _local_contrast_norm(self, image, radius=9):
+    def _local_contrast_norm(self, input: Tensor, radius: int = 9) -> Tensor:
         """
         Apply local contrast normalization over an input image
-        image: torch.Tensor , .shape => (1,channels,height,width)
 
-        radius: Gaussian filter size (int), odd
+        Args:
+        - input: torch.Tensor , .shape => (1,channels,height,width)
+        - radius: Gaussian filter size (int), odd
         """
-        image = transforms.ToTensor()(image).unsqueeze_(0)
         if radius % 2 == 0:
             radius += 1
 
@@ -161,15 +197,15 @@ class ImageNormalizer(Executor):
 
             return x / np.sum(x)
 
-        n, c, h, w = image.shape[0], image.shape[1], image.shape[2], image.shape[3]
+        n, c, h, w = input.shape[0], input.shape[1], input.shape[2], input.shape[3]
 
-        gaussian_filter = torch.Tensor(get_gaussian_filter((1, c, radius, radius)))
+        gaussian_filter = Tensor(get_gaussian_filter((1, c, radius, radius)))
         filtered_out = torch.nn.functional.conv2d(
-            image, gaussian_filter, padding=radius - 1
+            input, gaussian_filter, padding=radius - 1
         )
         mid = int(np.floor(gaussian_filter.shape[2] / 2.0))
         ### Subtractive Normalization
-        centered_image = image - filtered_out[:, :, mid:-mid, mid:-mid]
+        centered_image = input - filtered_out[:, :, mid:-mid, mid:-mid]
 
         ## Variance Calc
         sum_sqr_image = torch.nn.functional.conv2d(
@@ -181,12 +217,10 @@ class ImageNormalizer(Executor):
         ## Divisive Normalization
         divisor = np.maximum(per_img_mean.numpy(), s_deviation.numpy())
         divisor = np.maximum(divisor, 1e-4)
-        new_image = centered_image / torch.Tensor(divisor)
-        new_image = transforms.ToPILImage()(new_image.squeeze_(0))
-
+        new_image = centered_image / Tensor(divisor)
         return new_image
 
-    def _load_image(self, blob: 'np.ndarray'):
+    def _load_image(self, blob: 'np.ndarray') -> Image:
         """
         Load an image array and return a `PIL.Image` object.
         """
