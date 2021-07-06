@@ -10,6 +10,25 @@ from jinahub.image.normalizer import ImageNormalizer
 cur_dir = os.path.dirname(os.path.abspath(__file__))
 
 
+@pytest.fixture
+def test_image_uri_doc():
+    return Document(uri=os.path.join(cur_dir, '..', 'data', 'test_image.png'))
+
+
+@pytest.fixture
+def test_image_buffer_doc():
+    doc = Document(uri=os.path.join(cur_dir, '..', 'data', 'test_image.png'))
+    doc.convert_uri_to_buffer()
+    return doc
+
+
+@pytest.fixture
+def test_image_blob_doc():
+    doc = Document(uri=os.path.join(cur_dir, '..', 'data', 'test_image.png'))
+    doc.convert_image_uri_to_blob()
+    return doc
+
+
 def test_initialization():
     norm = ImageNormalizer()
     assert norm.target_size == 224
@@ -29,8 +48,29 @@ def test_initialization():
     assert norm.target_channel_axis == 5
 
 
-def test_crafting_image():
-    doc = Document(uri=os.path.join(cur_dir, '..', 'data', 'test_image.png'))
+def test_reading_image(test_image_uri_doc,
+                       test_image_buffer_doc,
+                       test_image_blob_doc):
+
+    norm = ImageNormalizer(resize_dim=123,
+                           img_mean=(0.1, 0.1, 0.1),
+                           img_std=(0.5, 0.5, 0.5))
+
+    docs = DocumentArray([test_image_uri_doc,
+                          test_image_buffer_doc,
+                          test_image_blob_doc])
+
+    assert docs[0].blob is None and docs[1].blob is None
+    norm.read(docs)
+    assert len(docs) == 3
+    for doc in docs:
+        assert np.array_equal(doc.blob, test_image_blob_doc.blob)
+
+    
+@pytest.mark.parametrize('manual_read', [True, False])
+def test_crafting_image(test_image_uri_doc, manual_read):
+    from copy import deepcopy
+    doc = Document(test_image_uri_doc, copy=True)
     doc.convert_image_uri_to_blob()
     norm = ImageNormalizer(resize_dim=123,
                            img_mean=(0.1, 0.1, 0.1),
@@ -76,14 +116,18 @@ def test_crafting_image():
 
     assert np.array_equal(norm_img, img)
 
-    processed_docs = norm.craft(DocumentArray([doc]))
+    if manual_read:
+        docs = DocumentArray([doc])
+    else:
+        docs = DocumentArray([test_image_uri_doc])
+    processed_docs = norm.craft(docs)
     assert np.array_equal(processed_docs[0].blob, img)
 
 
-def test_move_channel_axis():
+def test_move_channel_axis(test_image_uri_doc):
     norm = ImageNormalizer(channel_axis=2, target_channel_axis=0)
 
-    doc = Document(uri=os.path.join(cur_dir, '..', 'data', 'test_image.png'))
+    doc = test_image_uri_doc
     doc.convert_image_uri_to_blob()
     img = norm._load_image(doc.blob)
     assert img.size == (96, 96)
