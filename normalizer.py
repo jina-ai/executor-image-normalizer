@@ -1,11 +1,16 @@
 __copyright__ = "Copyright (c) 2021 Jina AI Limited. All rights reserved."
 __license__ = "Apache-2.0"
 
-from typing import Tuple, Union, Iterable
+from typing import Iterable, Tuple, Union
+
+import cv2
 import numpy as np
 import PIL.Image as Image
-
+import torch
 from jina import DocumentArray, Executor, requests
+from torchvision import transforms
+
+Tensor = torch.Tensor
 
 
 class ImageNormalizer(Executor):
@@ -17,6 +22,9 @@ class ImageNormalizer(Executor):
         resize_dim: Union[Iterable[int], int] = 256,
         channel_axis: int = -1,
         target_channel_axis: int = -1,
+        image_smoothing: str = None,
+        local_response_norm: bool = False,
+        local_contrast_norm: bool = False,
         *args,
         **kwargs,
     ):
@@ -28,6 +36,19 @@ class ImageNormalizer(Executor):
         self.img_std = np.array(img_std).reshape((1, 1, 3))
         self.channel_axis = channel_axis
         self.target_channel_axis = target_channel_axis
+        self.image_smoothing = image_smoothing
+        if self.image_smoothing:
+            assert self.image_smoothing in [
+                "gaussian",
+                "averaging",
+                "median",
+                "bilateral",
+            ], (
+                f"Image smoothing is either 'gaussian', 'averaging'"
+                f"'median' or 'bilateral', got {self.image_smoothing}."
+            )
+        self.local_response_norm = local_response_norm
+        self.local_contrast_norm = local_contrast_norm
 
     @requests
     def craft(self, docs: DocumentArray, **kwargs) -> DocumentArray:
@@ -43,15 +64,198 @@ class ImageNormalizer(Executor):
             doc.blob = img
         return filtered_docs
 
-    def _normalize(self, img):
+    def _normalize(
+        self,
+        img,
+        radius_lcn: int = 9,
+        size_lrn: int = 3,
+        alpha_lrn: float = 1e-4,
+        beta_lrn: float = 0.75,
+        k_lrn: float = 1.0,
+        ksize_img_sm: Tuple = (65, 65),
+        sigmaX_gaussian_img_sm: int = 10,
+        ksize_median_blur_img_sm: int = 5,
+        diameter_bilateral_filter_img_sm: int = 9,
+        sigmaColor_bilateral_filter_img_sm: int = 75,
+        sigmaSpace_bilateral_filter_img_sm: int = 75,
+        *args,
+        **kwargs,
+    ):
+        """
+        Apply resize, crop, smooth, local contrast and local response normalization
+
+        Args:
+        - img: image to normalize
+        - *_lcn: local contrast normalization parameters
+        - *_lrn: local response normalization paramters
+        - *_img_sm: image smoothing parameters
+
+        """
         img = self._resize_short(img)
         img, _, _ = self._crop_image(img, how='center')
+        img = (
+            self._image_smoothing(
+                img,
+                self.image_smoothing,
+                ksize_img_sm,
+                sigmaX_gaussian_img_sm,
+                ksize_median_blur_img_sm,
+                diameter_bilateral_filter_img_sm,
+                sigmaColor_bilateral_filter_img_sm,
+                sigmaSpace_bilateral_filter_img_sm,
+            )
+            if self.image_smoothing
+            else img
+        )
+        if self.local_contrast_norm or self.local_response_norm:
+            img_tensor = transforms.ToTensor()(img).unsqueeze_(0)
+            img_tensor = (
+                self._local_contrast_norm(img_tensor, radius_lcn)
+                if self.local_contrast_norm
+                else img_tensor
+            )
+            img_tensor = (
+                self._local_response_norm(
+                    img_tensor,
+                    size_lrn=size_lrn,
+                    alpha_lrn=alpha_lrn,
+                    beta_lrn=beta_lrn,
+                    k_lrn=k_lrn,
+                )
+                if self.local_response_norm
+                else img_tensor
+            )
+            img = transforms.ToPILImage()(img_tensor.squeeze_(0))
+
         img = np.array(img).astype('float32') / 255
         img -= self.img_mean
         img /= self.img_std
         return img
 
-    def _load_image(self, blob: 'np.ndarray'):
+    @staticmethod
+    def _image_smoothing(
+        img: Image,
+        image_smoothing: str = None,
+        ksize_img_sm: Tuple = (65, 65),
+        sigmaX_gaussian_img_sm: int = 10,
+        ksize_median_blur_img_sm: int = 5,
+        diameter_bilateral_filter_img_sm: int = 9,
+        sigmaColor_bilateral_filter_img_sm: int = 75,
+        sigmaSpace_bilateral_filter_img_sm: int = 75,
+        *args,
+        **kwargs,
+    ) -> Image:
+        """
+        Apply image smoothing techniques to help reduce the noise by removing high frequency
+        content (eg: noise, edges) from the image.
+        We use OpenCV to provide four main types of smoothing techniques:
+        - Averaging
+        - Gaussian Blurring
+        - Median Blurring
+        - Bilateral Filtering
+
+        Args:
+            img: input image to be smoothed
+            image_smoothing: image soothing technique
+            ksize_img_sm: Gaussian kernel size, ksize.width and ksize.height
+            sigmaX_gaussian_img_sm: Gaussian kernel standard deviation in X direction.
+            ksize_median_blur_img_sm: Median blurring kernel size
+            diameter_bilateral_filter_img_sm: Diameter of each pixel neighborhood that is used during filtering.
+            sigmaColor_bilateral_filter_img_sm: Filter sigma in the color space.
+            sigmaSpace_bilateral_filter_img_sm: Filter sigma in the coordinate space.
+        """
+        img = np.array(img)
+        if image_smoothing == "gaussian":
+            image_smooth = cv2.GaussianBlur(img, ksize_img_sm, sigmaX_gaussian_img_sm)
+        elif image_smoothing == "averaging":
+            image_smooth = cv2.blur(img, ksize_img_sm)
+        elif image_smoothing == "median":
+            image_smooth = cv2.medianBlur(img, ksize_median_blur_img_sm)
+        elif image_smoothing == "bilateral":
+            image_smooth = cv2.bilateralFilter(
+                img,
+                diameter_bilateral_filter_img_sm,
+                sigmaColor_bilateral_filter_img_sm,
+                sigmaSpace_bilateral_filter_img_sm,
+            )
+        else:
+            assert (
+                f"Image smoothing is either 'gaussian', 'averaging'"
+                f"'median' or 'bilateral', got {self.image_smoothing}."
+            )
+
+        image_smooth = cv2.subtract(img, image_smooth, dtype=cv2.CV_32F)
+        return image_smooth
+
+    @staticmethod
+    def _local_response_norm(
+        input: Tensor,
+        size_lrn: int = 3,
+        alpha_lrn: float = 1e-4,
+        beta_lrn: float = 0.75,
+        k_lrn: float = 1.0,
+    ) -> Tensor:
+        """
+        Apply local response normalization over an input signal composed of
+        several input planes, where channels occupy the second dimension.
+
+        See :class:`~torch.nn.LocalResponseNorm` for details.
+        """
+        return torch.nn.functional.local_response_norm(
+            input, size=size_lrn, alpha=alpha_lrn, beta=beta_lrn, k=k_lrn
+        )
+
+    @staticmethod
+    def _local_contrast_norm(input: Tensor, radius_lcn: int = 9) -> Tensor:
+        """
+        Apply local contrast normalization over an input image
+
+        Args:
+        - input: torch.Tensor , .shape => (1,channels,height,width)
+        - radius_lcn: Gaussian filter size (int), odd
+        """
+        if radius_lcn % 2 == 0:
+            radius_lcn += 1
+
+        def get_gaussian_filter(kernel_shape):
+            x = np.zeros(kernel_shape, dtype='float64')
+
+            def gauss(x, y, sigma=2.0):
+                Z = 2 * np.pi * sigma ** 2
+                return 1.0 / Z * np.exp(-(x ** 2 + y ** 2) / (2.0 * sigma ** 2))
+
+            mid = np.floor(kernel_shape[-1] / 2.0)
+            for kernel_idx in range(0, kernel_shape[1]):
+                for i in range(0, kernel_shape[2]):
+                    for j in range(0, kernel_shape[3]):
+                        x[0, kernel_idx, i, j] = gauss(i - mid, j - mid)
+
+            return x / np.sum(x)
+
+        n, c, h, w = input.shape[0], input.shape[1], input.shape[2], input.shape[3]
+
+        gaussian_filter = Tensor(get_gaussian_filter((1, c, radius_lcn, radius_lcn)))
+        filtered_out = torch.nn.functional.conv2d(
+            input, gaussian_filter, padding=radius_lcn - 1
+        )
+        mid = int(np.floor(gaussian_filter.shape[2] / 2.0))
+        ### Subtractive Normalization
+        centered_image = input - filtered_out[:, :, mid:-mid, mid:-mid]
+
+        ## Variance Calc
+        sum_sqr_image = torch.nn.functional.conv2d(
+            centered_image.pow(2), gaussian_filter, padding=radius_lcn - 1
+        )
+        s_deviation = sum_sqr_image[:, :, mid:-mid, mid:-mid].sqrt()
+        per_img_mean = s_deviation.mean()
+
+        ## Divisive Normalization
+        divisor = np.maximum(per_img_mean.numpy(), s_deviation.numpy())
+        divisor = np.maximum(divisor, 1e-4)
+        new_image = centered_image / Tensor(divisor)
+        return new_image
+
+    def _load_image(self, blob: 'np.ndarray') -> Image:
         """
         Load an image array and return a `PIL.Image` object.
         """
@@ -59,8 +263,9 @@ class ImageNormalizer(Executor):
         return Image.fromarray(img.astype('uint8'))
 
     @staticmethod
-    def _move_channel_axis(img: 'np.ndarray', channel_axis_to_move: int,
-                           target_channel_axis: int = -1) -> 'np.ndarray':
+    def _move_channel_axis(
+        img: 'np.ndarray', channel_axis_to_move: int, target_channel_axis: int = -1
+    ) -> 'np.ndarray':
         """
         Ensure the color channel axis is the default axis.
         """
@@ -68,8 +273,7 @@ class ImageNormalizer(Executor):
             return img
         return np.moveaxis(img, channel_axis_to_move, target_channel_axis)
 
-    def _crop_image(self, img, top: int = None, left: int = None,
-                    how: str = 'precise'):
+    def _crop_image(self, img, top: int = None, left: int = None, how: str = 'precise'):
         """
         Crop the input :py:mod:`PIL` image.
         :param img: :py:mod:`PIL.Image`, the image to be resized
@@ -91,8 +295,10 @@ class ImageNormalizer(Executor):
         elif isinstance(self.target_size, Tuple) and len(self.target_size) == 2:
             target_h, target_w = self.target_size
         else:
-            raise ValueError(f'target_size should be an integer or a tuple of '
-                             f'two integers: {self.target_size}')
+            raise ValueError(
+                f'target_size should be an integer or a tuple of '
+                f'two integers: {self.target_size}'
+            )
         w_beg = left
         h_beg = top
         if how == 'center':
@@ -102,9 +308,13 @@ class ImageNormalizer(Executor):
             w_beg = np.random.randint(0, img_w - target_w + 1)
             h_beg = np.random.randint(0, img_h - target_h + 1)
         elif how == 'precise':
-            assert (w_beg is not None and h_beg is not None)
-            assert (0 <= w_beg <= (img_w - target_w)), f'left must be within [0, {img_w - target_w}]: {w_beg}'
-            assert (0 <= h_beg <= (img_h - target_h)), f'top must be within [0, {img_h - target_h}]: {h_beg}'
+            assert w_beg is not None and h_beg is not None
+            assert (
+                0 <= w_beg <= (img_w - target_w)
+            ), f'left must be within [0, {img_w - target_w}]: {w_beg}'
+            assert (
+                0 <= h_beg <= (img_h - target_h)
+            ), f'top must be within [0, {img_h - target_h}]: {h_beg}'
         else:
             raise ValueError(f'unknown input how: {how}')
         if not isinstance(w_beg, int):
@@ -134,7 +344,9 @@ class ImageNormalizer(Executor):
         elif isinstance(self.resize_dim, Tuple) and len(self.resize_dim) == 2:
             target_w, target_h = self.resize_dim
         else:
-            raise ValueError(f'target_size should be an integer or a tuple of two '
-                             f'integers: {self.resize_dim}')
+            raise ValueError(
+                f'target_size should be an integer or a tuple of two '
+                f'integers: {self.resize_dim}'
+            )
         img = img.resize((target_w, target_h), getattr(Image, how))
         return img
