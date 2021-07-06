@@ -10,6 +10,9 @@ The following parameters can be used:
 - `img_std` (tuple, default (1,1,1)): The standard deviation for normalization
 - `channel_axis` (int): The channel axis in the images used
 - `target_channel_axis` (int): The desired channel axis in the images. If this is not equal to the channel_axis, the axis is moved.
+- `image_smoothing` (str): The desired smoothing technique in the image, currently we have 4 image smoothing (`gaussian`, `averaging`, `median`, `bilateral`)
+- `local_response_norm` (bool): Activate or deactivate local response normalization
+- `local_contrast_norm` (bool): Activate or deactivate contrast response normalization
 
 
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
@@ -25,38 +28,38 @@ The following parameters can be used:
 
 ## 🌱 Prerequisites
 
-No prerequisites are required to run this executor. 
+No prerequisites are required to run this executor.
 
 ## 🚀 Usages
 
 ### 🚚 Via JinaHub
 
 #### using docker images
-Use the prebuilt images from JinaHub in your python codes, 
+Use the prebuilt images from JinaHub in your python codes,
 
 ```python
 from jina import Flow
-	
+
 f = Flow().add(uses='jinahub+docker://ImageNormalizer')
 ```
 
 or in the `.yml` config.
-	
+
 ```yaml
 jtype: Flow
 pods:
   - name: encoder
     uses: 'jinahub+docker://ImageNormalizer'
-    with: 
+    with:
       target_size: 42
-``` 
+```
 
 #### using source codes
 Use the source codes from JinaHub in your python codes,
 
 ```python
 from jina import Flow
-	
+
 f = Flow().add(uses='jinahub://ImageNormalizer')
 ```
 
@@ -83,7 +86,7 @@ pods:
 	```python
 	from jina import Flow
 	from jinahub.image.normalizer import ImageNormalizer
-	
+
 	f = Flow().add(uses=ImageNormalizer)
 	```
 
@@ -102,12 +105,12 @@ pods:
 
 	```python
 	from jina import Flow
-	
+
 	f = Flow().add(uses='docker://image-normalizer')
 	```
-	
 
-## 🎉️ Example 
+
+## 🎉️ Example
 
 
 ```python
@@ -120,7 +123,7 @@ with f:
 	print(f'{resp}')
 ```
 
-### Inputs 
+### Inputs
 
 `Document` with image `blob`.
 
