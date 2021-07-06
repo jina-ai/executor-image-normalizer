@@ -69,7 +69,6 @@ def test_reading_image(test_image_uri_doc,
     
 @pytest.mark.parametrize('manual_read', [True, False])
 def test_crafting_image(test_image_uri_doc, manual_read):
-    from copy import deepcopy
     doc = Document(test_image_uri_doc, copy=True)
     doc.convert_image_uri_to_blob()
     norm = ImageNormalizer(resize_dim=123,
