@@ -38,17 +38,15 @@ class ImageNormalizer(Executor):
         self.target_channel_axis = target_channel_axis
         self.image_smoothing = image_smoothing
         if self.image_smoothing:
-            self.error_msg = (
-                f"Image smoothing is either 'gaussian', 'averaging'"
-                f"'median' or 'bilateral', got {self.image_smoothing}."
-            )
             assert self.image_smoothing in [
                 "gaussian",
                 "averaging",
                 "median",
                 "bilateral",
-            ], self.error_msg
-
+            ], (
+                f"Image smoothing is either 'gaussian', 'averaging'"
+                f"'median' or 'bilateral', got {self.image_smoothing}."
+            )
         self.local_response_norm = local_response_norm
         self.local_contrast_norm = local_contrast_norm
 
@@ -66,30 +64,64 @@ class ImageNormalizer(Executor):
             doc.blob = img
         return filtered_docs
 
-    def _normalize(self, img):
+    def _normalize(
+        self,
+        img,
+        radius_lcn: int = 9,
+        size_lrn: int = 3,
+        alpha_lrn: float = 1e-4,
+        beta_lrn: float = 0.75,
+        k_lrn: float = 1.0,
+        ksize_img_sm: Tuple = (65, 65),
+        sigmaX_gaussian_img_sm: int = 10,
+        ksize_median_blur_img_sm: int = 5,
+        diameter_bilateral_filter_img_sm: int = 9,
+        sigmaColor_bilateral_filter_img_sm: int = 75,
+        sigmaSpace_bilateral_filter_img_sm: int = 75,
+        *args,
+        **kwargs,
+    ):
         """
         Apply resize, crop, smooth, local contrast and local response normalization
 
         Args:
         - img: image to normalize
+        - *_lcn: local contrast normalization parameters
+        - *_lrn: local response normalization paramters
+        - *_img_sm: image smoothing parameters
 
         """
         img = self._resize_short(img)
         img, _, _ = self._crop_image(img, how='center')
         img = (
-            self._image_smoothing(img, self.image_smoothing)
+            self._image_smoothing(
+                img,
+                self.image_smoothing,
+                ksize_img_sm,
+                sigmaX_gaussian_img_sm,
+                ksize_median_blur_img_sm,
+                diameter_bilateral_filter_img_sm,
+                sigmaColor_bilateral_filter_img_sm,
+                sigmaSpace_bilateral_filter_img_sm,
+            )
             if self.image_smoothing
             else img
         )
         if self.local_contrast_norm or self.local_response_norm:
             img_tensor = transforms.ToTensor()(img).unsqueeze_(0)
             img_tensor = (
-                self._local_contrast_norm(img_tensor)
+                self._local_contrast_norm(img_tensor, radius_lcn)
                 if self.local_contrast_norm
                 else img_tensor
             )
             img_tensor = (
-                self._local_response_norm(img_tensor)
+                self._local_response_norm(
+                    img_tensor,
+                    size_lrn=size_lrn,
+                    alpha_lrn=alpha_lrn,
+                    beta_lrn=beta_lrn,
+                    k_lrn=k_lrn,
+                )
                 if self.local_response_norm
                 else img_tensor
             )
@@ -100,16 +132,18 @@ class ImageNormalizer(Executor):
         img /= self.img_std
         return img
 
+    @staticmethod
     def _image_smoothing(
-        self,
         img: Image,
         image_smoothing: str = None,
-        ksize: Tuple = (65, 65),
-        sigmaXGaussian: int = 10,
-        ksizeMedianBlur: int = 5,
-        diameterBilateralFilter: int = 9,
-        sigmaColorBilateralFilter: int = 75,
-        sigmaSpaceBilateralFilter: int = 75,
+        ksize_img_sm: Tuple = (65, 65),
+        sigmaX_gaussian_img_sm: int = 10,
+        ksize_median_blur_img_sm: int = 5,
+        diameter_bilateral_filter_img_sm: int = 9,
+        sigmaColor_bilateral_filter_img_sm: int = 75,
+        sigmaSpace_bilateral_filter_img_sm: int = 75,
+        *args,
+        **kwargs,
     ) -> Image:
         """
         Apply image smoothing techniques to help reduce the noise by removing high frequency
@@ -123,40 +157,43 @@ class ImageNormalizer(Executor):
         Args:
             img: input image to be smoothed
             image_smoothing: image soothing technique
-            ksize: Gaussian kernel size, ksize.width and ksize.height
-            sigmaXGaussian: Gaussian kernel standard deviation in X direction.
-            ksizeMedianBlur: Median blurring kernel size
-            diameterBilateralFilter: Diameter of each pixel neighborhood that is used during filtering.
-            sigmaColorBilateralFilter: Filter sigma in the color space.
-            sigmaSpaceBilateralFilter: Filter sigma in the coordinate space.
+            ksize_img_sm: Gaussian kernel size, ksize.width and ksize.height
+            sigmaX_gaussian_img_sm: Gaussian kernel standard deviation in X direction.
+            ksize_median_blur_img_sm: Median blurring kernel size
+            diameter_bilateral_filter_img_sm: Diameter of each pixel neighborhood that is used during filtering.
+            sigmaColor_bilateral_filter_img_sm: Filter sigma in the color space.
+            sigmaSpace_bilateral_filter_img_sm: Filter sigma in the coordinate space.
         """
         img = np.array(img)
         if image_smoothing == "gaussian":
-            image_smooth = cv2.GaussianBlur(img, ksize, sigmaXGaussian)
+            image_smooth = cv2.GaussianBlur(img, ksize_img_sm, sigmaX_gaussian_img_sm)
         elif image_smoothing == "averaging":
-            image_smooth = cv2.blur(img, ksize)
+            image_smooth = cv2.blur(img, ksize_img_sm)
         elif image_smoothing == "median":
-            image_smooth = cv2.medianBlur(img, ksizeMedianBlur)
+            image_smooth = cv2.medianBlur(img, ksize_median_blur_img_sm)
         elif image_smoothing == "bilateral":
             image_smooth = cv2.bilateralFilter(
                 img,
-                diameterBilateralFilter,
-                sigmaColorBilateralFilter,
-                sigmaSpace_bilateralFilter,
+                diameter_bilateral_filter_img_sm,
+                sigmaColor_bilateral_filter_img_sm,
+                sigmaSpace_bilateral_filter_img_sm,
             )
         else:
-            assert self.error_msg
+            assert (
+                f"Image smoothing is either 'gaussian', 'averaging'"
+                f"'median' or 'bilateral', got {self.image_smoothing}."
+            )
 
         image_smooth = cv2.subtract(img, image_smooth, dtype=cv2.CV_32F)
         return image_smooth
 
+    @staticmethod
     def _local_response_norm(
-        self,
         input: Tensor,
-        size: int = 3,
-        alpha: float = 1e-4,
-        beta: float = 0.75,
-        k: float = 1.0,
+        size_lrn: int = 3,
+        alpha_lrn: float = 1e-4,
+        beta_lrn: float = 0.75,
+        k_lrn: float = 1.0,
     ) -> Tensor:
         """
         Apply local response normalization over an input signal composed of
@@ -164,23 +201,21 @@ class ImageNormalizer(Executor):
 
         See :class:`~torch.nn.LocalResponseNorm` for details.
         """
-
-        input = torch.nn.functional.local_response_norm(
-            input, size, alpha=alpha, beta=beta, k=k
+        return torch.nn.functional.local_response_norm(
+            input, size=size_lrn, alpha=alpha_lrn, beta=beta_lrn, k=k_lrn
         )
 
-        return input
-
-    def _local_contrast_norm(self, input: Tensor, radius: int = 9) -> Tensor:
+    @staticmethod
+    def _local_contrast_norm(input: Tensor, radius_lcn: int = 9) -> Tensor:
         """
         Apply local contrast normalization over an input image
 
         Args:
         - input: torch.Tensor , .shape => (1,channels,height,width)
-        - radius: Gaussian filter size (int), odd
+        - radius_lcn: Gaussian filter size (int), odd
         """
-        if radius % 2 == 0:
-            radius += 1
+        if radius_lcn % 2 == 0:
+            radius_lcn += 1
 
         def get_gaussian_filter(kernel_shape):
             x = np.zeros(kernel_shape, dtype='float64')
@@ -199,9 +234,9 @@ class ImageNormalizer(Executor):
 
         n, c, h, w = input.shape[0], input.shape[1], input.shape[2], input.shape[3]
 
-        gaussian_filter = Tensor(get_gaussian_filter((1, c, radius, radius)))
+        gaussian_filter = Tensor(get_gaussian_filter((1, c, radius_lcn, radius_lcn)))
         filtered_out = torch.nn.functional.conv2d(
-            input, gaussian_filter, padding=radius - 1
+            input, gaussian_filter, padding=radius_lcn - 1
         )
         mid = int(np.floor(gaussian_filter.shape[2] / 2.0))
         ### Subtractive Normalization
@@ -209,7 +244,7 @@ class ImageNormalizer(Executor):
 
         ## Variance Calc
         sum_sqr_image = torch.nn.functional.conv2d(
-            centered_image.pow(2), gaussian_filter, padding=radius - 1
+            centered_image.pow(2), gaussian_filter, padding=radius_lcn - 1
         )
         s_deviation = sum_sqr_image[:, :, mid:-mid, mid:-mid].sqrt()
         per_img_mean = s_deviation.mean()
