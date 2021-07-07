@@ -50,7 +50,7 @@ jtype: Flow
 pods:
   - name: encoder
     uses: 'jinahub+docker://ImageNormalizer'
-    with: 
+    override_with: 
       target_size: 42
 ``` 
 
