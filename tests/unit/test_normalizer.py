@@ -1,7 +1,7 @@
 import pytest
 import os
 import numpy as np
-from PIL.Image import Image
+from PIL.Image import Image, fromarray
 
 from jina import DocumentArray, Document
 
@@ -11,20 +11,29 @@ cur_dir = os.path.dirname(os.path.abspath(__file__))
 
 
 @pytest.fixture
-def test_image_uri_doc():
-    return Document(uri=os.path.join(cur_dir, '..', 'data', 'test_image.png'))
+def numpy_image_uri(tmpdir):
+    blob = np.random.randint(255, size=(96, 96, 3), dtype='uint8')
+    im = fromarray(blob)
+    uri = os.path.join(tmpdir, 'tmp.png')
+    im.save(uri)
+    return uri
 
 
 @pytest.fixture
-def test_image_buffer_doc():
-    doc = Document(uri=os.path.join(cur_dir, '..', 'data', 'test_image.png'))
+def test_image_uri_doc(numpy_image_uri):
+    return Document(uri=numpy_image_uri)
+
+
+@pytest.fixture
+def test_image_buffer_doc(numpy_image_uri):
+    doc = Document(uri=numpy_image_uri)
     doc.convert_uri_to_buffer()
     return doc
 
 
 @pytest.fixture
-def test_image_blob_doc():
-    doc = Document(uri=os.path.join(cur_dir, '..', 'data', 'test_image.png'))
+def test_image_blob_doc(numpy_image_uri):
+    doc = Document(uri=numpy_image_uri)
     doc.convert_image_uri_to_blob()
     return doc
 
@@ -34,8 +43,8 @@ def test_initialization():
     assert norm.target_size == 224
     norm = ImageNormalizer(
         target_size=96,
-        img_mean=(1., 2., 3.),
-        img_std=(2., 2., 2.),
+        img_mean=(1.0, 2.0, 3.0),
+        img_std=(2.0, 2.0, 2.0),
         resize_dim=256,
         channel_axis=4,
         target_channel_axis=5,
@@ -48,17 +57,17 @@ def test_initialization():
     assert norm.target_channel_axis == 5
 
 
-def test_convert_image_to_blob(test_image_uri_doc,
-                       test_image_buffer_doc,
-                       test_image_blob_doc):
+def test_convert_image_to_blob(
+    test_image_uri_doc, test_image_buffer_doc, test_image_blob_doc
+):
 
-    norm = ImageNormalizer(resize_dim=123,
-                           img_mean=(0.1, 0.1, 0.1),
-                           img_std=(0.5, 0.5, 0.5))
+    norm = ImageNormalizer(
+        resize_dim=123, img_mean=(0.1, 0.1, 0.1), img_std=(0.5, 0.5, 0.5)
+    )
 
-    docs = DocumentArray([test_image_uri_doc,
-                          test_image_buffer_doc,
-                          test_image_blob_doc])
+    docs = DocumentArray(
+        [test_image_uri_doc, test_image_buffer_doc, test_image_blob_doc]
+    )
 
     assert docs[0].blob is None and docs[1].blob is None
     for doc in docs:
@@ -67,14 +76,14 @@ def test_convert_image_to_blob(test_image_uri_doc,
     for doc in docs:
         assert np.array_equal(doc.blob, test_image_blob_doc.blob)
 
-    
+
 @pytest.mark.parametrize('manual_convert', [True, False])
 def test_crafting_image(test_image_uri_doc, manual_convert):
     doc = Document(test_image_uri_doc, copy=True)
     doc.convert_image_uri_to_blob()
-    norm = ImageNormalizer(resize_dim=123,
-                           img_mean=(0.1, 0.1, 0.1),
-                           img_std=(0.5, 0.5, 0.5))
+    norm = ImageNormalizer(
+        resize_dim=123, img_mean=(0.1, 0.1, 0.1), img_std=(0.5, 0.5, 0.5)
+    )
     img = norm._load_image(doc.blob)
     assert isinstance(img, Image)
     assert img.size == (96, 96)
