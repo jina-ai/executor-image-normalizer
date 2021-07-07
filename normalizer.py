@@ -34,7 +34,9 @@ class ImageNormalizer(Executor):
         filtered_docs = DocumentArray(
             list(filter(lambda d: 'image/' in d.mime_type, docs))
         )
+
         for doc in filtered_docs:
+            self._convert_image_to_blob(doc)
             raw_img = self._load_image(doc.blob)
             _img = self._normalize(raw_img)
             # move the channel_axis to target_channel_axis to better fit
@@ -42,6 +44,12 @@ class ImageNormalizer(Executor):
             img = self._move_channel_axis(_img, -1, self.target_channel_axis)
             doc.blob = img
         return filtered_docs
+
+    def _convert_image_to_blob(self, doc):
+        if doc.uri:
+            doc.convert_image_uri_to_blob()
+        elif doc.buffer:
+            doc.convert_image_buffer_to_blob()
 
     def _normalize(self, img):
         img = self._resize_short(img)
@@ -59,8 +67,9 @@ class ImageNormalizer(Executor):
         return Image.fromarray(img.astype('uint8'))
 
     @staticmethod
-    def _move_channel_axis(img: 'np.ndarray', channel_axis_to_move: int,
-                           target_channel_axis: int = -1) -> 'np.ndarray':
+    def _move_channel_axis(
+        img: 'np.ndarray', channel_axis_to_move: int, target_channel_axis: int = -1
+    ) -> 'np.ndarray':
         """
         Ensure the color channel axis is the default axis.
         """
@@ -68,8 +77,7 @@ class ImageNormalizer(Executor):
             return img
         return np.moveaxis(img, channel_axis_to_move, target_channel_axis)
 
-    def _crop_image(self, img, top: int = None, left: int = None,
-                    how: str = 'precise'):
+    def _crop_image(self, img, top: int = None, left: int = None, how: str = 'precise'):
         """
         Crop the input :py:mod:`PIL` image.
         :param img: :py:mod:`PIL.Image`, the image to be resized
@@ -91,8 +99,10 @@ class ImageNormalizer(Executor):
         elif isinstance(self.target_size, Tuple) and len(self.target_size) == 2:
             target_h, target_w = self.target_size
         else:
-            raise ValueError(f'target_size should be an integer or a tuple of '
-                             f'two integers: {self.target_size}')
+            raise ValueError(
+                f'target_size should be an integer or a tuple of '
+                f'two integers: {self.target_size}'
+            )
         w_beg = left
         h_beg = top
         if how == 'center':
@@ -102,9 +112,13 @@ class ImageNormalizer(Executor):
             w_beg = np.random.randint(0, img_w - target_w + 1)
             h_beg = np.random.randint(0, img_h - target_h + 1)
         elif how == 'precise':
-            assert (w_beg is not None and h_beg is not None)
-            assert (0 <= w_beg <= (img_w - target_w)), f'left must be within [0, {img_w - target_w}]: {w_beg}'
-            assert (0 <= h_beg <= (img_h - target_h)), f'top must be within [0, {img_h - target_h}]: {h_beg}'
+            assert w_beg is not None and h_beg is not None
+            assert (
+                0 <= w_beg <= (img_w - target_w)
+            ), f'left must be within [0, {img_w - target_w}]: {w_beg}'
+            assert (
+                0 <= h_beg <= (img_h - target_h)
+            ), f'top must be within [0, {img_h - target_h}]: {h_beg}'
         else:
             raise ValueError(f'unknown input how: {how}')
         if not isinstance(w_beg, int):
@@ -134,7 +148,9 @@ class ImageNormalizer(Executor):
         elif isinstance(self.resize_dim, Tuple) and len(self.resize_dim) == 2:
             target_w, target_h = self.resize_dim
         else:
-            raise ValueError(f'target_size should be an integer or a tuple of two '
-                             f'integers: {self.resize_dim}')
+            raise ValueError(
+                f'target_size should be an integer or a tuple of two '
+                f'integers: {self.resize_dim}'
+            )
         img = img.resize((target_w, target_h), getattr(Image, how))
         return img
