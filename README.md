@@ -13,6 +13,7 @@ The following parameters can be used:
 - `img_std` (tuple, default (1,1,1)): The standard deviation for normalization
 - `channel_axis` (int): The channel axis in the images used
 - `target_channel_axis` (int): The desired channel axis in the images. If this is not equal to the channel_axis, the axis is moved.
+- `target_dtype` (np.dtype, default `np.float32`): The desired type of the image array 
 
 
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->

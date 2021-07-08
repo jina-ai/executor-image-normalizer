@@ -1,5 +1,5 @@
 import setuptools
-
+from pkg_resources import parse_requirements
 
 setuptools.setup(
     name="executor-image-normalizer",

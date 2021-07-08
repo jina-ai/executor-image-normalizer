@@ -1,3 +1,6 @@
+from pydoc import locate
+
+import numpy
 import pytest
 import os
 import numpy as np
@@ -25,10 +28,13 @@ def data_generator(num_docs, numpy_image_uri):
         yield doc
 
 
-def test_use_in_flow(numpy_image_uri):
+@pytest.mark.parametrize('dtype', ['numpy.uint8', 'numpy.float32', 'numpy.float64'])
+def test_use_in_flow(numpy_image_uri, dtype):
+    os.environ['DTYPE'] = dtype
     with Flow.load_config('flow.yml') as flow:
         data = flow.post(
             on='/index', inputs=data_generator(5, numpy_image_uri), return_results=True
         )
         for doc in data[0].docs:
             assert doc.blob.shape == (64, 64, 3)
+            assert doc.blob.dtype == locate(dtype)
