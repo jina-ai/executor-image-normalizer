@@ -1,9 +1,11 @@
-import pytest
 import os
-import numpy as np
-from PIL.Image import fromarray
+from pydoc import locate
 
+import numpy as np
+import pytest
+from PIL.Image import fromarray
 from jina import Flow, Document
+
 from jinahub.image.normalizer import ImageNormalizer
 
 cur_dir = os.path.dirname(os.path.abspath(__file__))
@@ -25,10 +27,20 @@ def data_generator(num_docs, numpy_image_uri):
         yield doc
 
 
-def test_use_in_flow(numpy_image_uri):
+@pytest.fixture()
+def dtype(request):
+    os.environ['DTYPE'] = request.param
+    yield
+    del os.environ['DTYPE']
+
+
+@pytest.mark.parametrize('dtype', ['numpy.uint8', 'numpy.float32', 'numpy.float64'], indirect=['dtype'])
+def test_use_in_flow(numpy_image_uri, dtype):
+    dtype = os.environ['DTYPE']
     with Flow.load_config('flow.yml') as flow:
         data = flow.post(
             on='/index', inputs=data_generator(5, numpy_image_uri), return_results=True
         )
         for doc in data[0].docs:
             assert doc.blob.shape == (64, 64, 3)
+            assert doc.blob.dtype == locate(dtype)

@@ -1,11 +1,13 @@
 __copyright__ = "Copyright (c) 2021 Jina AI Limited. All rights reserved."
 __license__ = "Apache-2.0"
 
+from pydoc import locate
 from typing import Tuple, Union, Iterable
 import numpy as np
 import PIL.Image as Image
 
 from jina import DocumentArray, Executor, requests
+from jina_commons import get_logger
 
 
 class ImageNormalizer(Executor):
@@ -17,6 +19,7 @@ class ImageNormalizer(Executor):
         resize_dim: Union[Iterable[int], int] = 256,
         channel_axis: int = -1,
         target_channel_axis: int = -1,
+        target_dtype: Union[str,np.dtype] = np.float32,
         *args,
         **kwargs,
     ):
@@ -28,6 +31,20 @@ class ImageNormalizer(Executor):
         self.img_std = np.array(img_std).reshape((1, 1, 3))
         self.channel_axis = channel_axis
         self.target_channel_axis = target_channel_axis
+        self.logger = get_logger(self)
+
+        # when passed from yaml it is string
+        if isinstance(target_dtype, str):
+            actual_type = locate(target_dtype)
+            if actual_type:
+                self.target_dtype = actual_type
+            else:
+                self.logger.error(f'Could not resolve type "{target_dtype}". '
+                                  f'Make sure you use "numpy.float32"-like syntax')
+
+        else:
+            self.target_dtype = target_dtype
+
 
     @requests
     def craft(self, docs: DocumentArray, **kwargs) -> DocumentArray:
@@ -42,7 +59,7 @@ class ImageNormalizer(Executor):
             # move the channel_axis to target_channel_axis to better fit
             # different models
             img = self._move_channel_axis(_img, -1, self.target_channel_axis)
-            doc.blob = img
+            doc.blob = img.astype(self.target_dtype)
         return filtered_docs
 
     def _convert_image_to_blob(self, doc):

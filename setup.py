@@ -1,6 +1,5 @@
 import setuptools
 
-
 setuptools.setup(
     name="executor-image-normalizer",
     version="2.0",

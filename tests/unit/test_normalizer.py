@@ -1,10 +1,9 @@
-import pytest
 import os
+
 import numpy as np
+import pytest
 from PIL.Image import Image, fromarray
-
 from jina import DocumentArray, Document
-
 from jinahub.image.normalizer import ImageNormalizer
 
 cur_dir = os.path.dirname(os.path.abspath(__file__))
@@ -48,6 +47,7 @@ def test_initialization():
         resize_dim=256,
         channel_axis=4,
         target_channel_axis=5,
+        target_dtype=np.uint8
     )
     assert norm.target_size == 96
     assert np.array_equal(norm.img_std, [[[2, 2, 2]]])
@@ -55,12 +55,12 @@ def test_initialization():
     assert norm.resize_dim == 256
     assert norm.channel_axis == 4
     assert norm.target_channel_axis == 5
+    assert norm.target_dtype == np.uint8
 
 
 def test_convert_image_to_blob(
-    test_image_uri_doc, test_image_buffer_doc, test_image_blob_doc
+        test_image_uri_doc, test_image_buffer_doc, test_image_blob_doc
 ):
-
     norm = ImageNormalizer(
         resize_dim=123, img_mean=(0.1, 0.1, 0.1), img_std=(0.5, 0.5, 0.5)
     )
@@ -77,13 +77,15 @@ def test_convert_image_to_blob(
         assert np.array_equal(doc.blob, test_image_blob_doc.blob)
 
 
+@pytest.mark.parametrize('dtype_conversion', [np.uint8, np.float32, np.float64])
 @pytest.mark.parametrize('manual_convert', [True, False])
-def test_crafting_image(test_image_uri_doc, manual_convert):
+def test_crafting_image(test_image_uri_doc, manual_convert, dtype_conversion):
     doc = Document(test_image_uri_doc, copy=True)
     doc.convert_image_uri_to_blob()
     norm = ImageNormalizer(
-        resize_dim=123, img_mean=(0.1, 0.1, 0.1), img_std=(0.5, 0.5, 0.5)
+        resize_dim=123, img_mean=(0.1, 0.1, 0.1), img_std=(0.5, 0.5, 0.5), target_dtype=dtype_conversion
     )
+    assert norm.target_dtype == dtype_conversion
     img = norm._load_image(doc.blob)
     assert isinstance(img, Image)
     assert img.size == (96, 96)
@@ -130,7 +132,10 @@ def test_crafting_image(test_image_uri_doc, manual_convert):
     else:
         docs = DocumentArray([test_image_uri_doc])
     processed_docs = norm.craft(docs)
-    assert np.array_equal(processed_docs[0].blob, img)
+    assert np.array_equal(processed_docs[0].blob, img.astype(dtype_conversion))
+
+    for doc in processed_docs:
+        assert doc.blob.dtype == dtype_conversion
 
 
 def test_move_channel_axis(test_image_uri_doc):
