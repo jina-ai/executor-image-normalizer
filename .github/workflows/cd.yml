@@ -1,0 +1,21 @@
+name: CD
+
+on:
+  pull_request:
+    branches:
+      - master
+    types: [ closed ]
+
+
+jobs:
+  push-hub:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - id: push
+        run: ./scripts/push.sh
+        env:
+          secret: ${{ secrets.HUBBLE_SECRET }}
+          id: ${{ secrets.HUBBLE_ID }}
