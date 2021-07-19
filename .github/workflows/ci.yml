@@ -10,13 +10,3 @@ jobs:
         uses: actions/checkout@v2
       - id: tests
         run: ./scripts/tests.sh
-  push-hub:
-    runs-on: ubuntu-latest
-    container:
-      image: jinaai/jina:master-standard
-      options: "--entrypoint /bin/bash"
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-      - id: push
-        run: jina hub push --force ${{ secrets.HUBBLE_UUID }} --secret ${{ secrets.HUBBLE_SECRET }} .

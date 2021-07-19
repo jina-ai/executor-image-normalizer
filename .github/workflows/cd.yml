@@ -13,7 +13,7 @@ jobs:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     container:
-      image: jinaai/jina:master
+      image: jinaai/jina:master-standard
       options: "--entrypoint /bin/bash"
     steps:
       - name: Checkout
