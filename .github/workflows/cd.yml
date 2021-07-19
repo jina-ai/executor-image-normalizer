@@ -5,17 +5,18 @@ on:
     branches:
       - master
     types: [ closed ]
+  workflow_dispatch
 
 
 jobs:
   push-hub:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
+    container:
+      image: jinaai/jina:master
+      options: "--entrypoint /bin/bash"
     steps:
       - name: Checkout
         uses: actions/checkout@v2
       - id: push
-        run: ./scripts/push.sh
-        env:
-          secret: ${{ secrets.HUBBLE_SECRET }}
-          id: ${{ secrets.HUBBLE_UUID }}
+        run: jina hub push --force ${{ secrets.HUBBLE_UUID }} --secret ${{ secrets.HUBBLE_SECRET }} .
