@@ -13,7 +13,7 @@ jobs:
   push-hub:
     runs-on: ubuntu-latest
     container:
-      image: jinaai/jina:master
+      image: jinaai/jina:master-standard
       options: "--entrypoint /bin/bash"
     steps:
       - name: Checkout
