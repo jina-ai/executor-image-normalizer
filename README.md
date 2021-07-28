@@ -1,3 +1,5 @@
+NOT MAINTAINED. MOVE TO https://github.com/jina-ai/executors/tree/main/jinahub/crafters/ImageNormalizer
+
 # ✨ Image Normalizer
 
 **Image Normalizer** is a class that resizes, crops and normalizes images.
